@@ -129,13 +129,18 @@ export const ProjectList: React.FC = () => {
               {/* Header inside card */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                    isCompleted 
-                      ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' 
-                      : 'bg-neutral-800 text-neutral-300 border-neutral-700'
-                  }`}>
-                    {isCompleted ? 'Concluído' : 'Em Andamento'}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                      isCompleted 
+                        ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40' 
+                        : 'bg-neutral-800 text-neutral-300 border-neutral-700'
+                    }`}>
+                      {isCompleted ? 'Concluído' : 'Em Andamento'}
+                    </span>
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-neutral-950 text-neutral-400 border border-neutral-850">
+                      Nível {project.knowledgeLevel ?? 0}/5
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-1.5">
                     {/* Delete button */}

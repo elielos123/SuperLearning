@@ -1,8 +1,10 @@
 import type { AISettings, Stage, EvaluationResult, TopicTask } from '../types';
+import { KNOWLEDGE_LEVELS } from '../types';
 
 interface GenerateRoadmapParams {
   name: string;
   scope: string;
+  knowledgeLevel: number;
   startDate: string;
   endDate: string;
   targetGoals: string;
@@ -86,6 +88,81 @@ async function callGemini(prompt: string, systemInstruction: string, settings: A
 }
 
 /**
+ * AI Assistance to Formulate Realistic Quantitative & Qualitative Goals
+ * Partindo do pressuposto que o usuário não tem conhecimento suficiente para estruturar metas claras.
+ */
+export async function generateSuggestedGoals(
+  scope: string,
+  knowledgeLevel: number,
+  settings: AISettings
+): Promise<string> {
+  const levelInfo = KNOWLEDGE_LEVELS.find(l => l.level === knowledgeLevel) || KNOWLEDGE_LEVELS[0];
+
+  if (!settings.apiKey?.trim()) {
+    if (settings.useMockFallback) {
+      return generateMockSuggestedGoals(scope, knowledgeLevel);
+    }
+    throw new Error('Configure sua Chave de API do Gemini ou ative o Modo Demonstração nas Configurações.');
+  }
+
+  const systemInstruction = `Você é um Engenheiro Sênior e Especialista em Andragogia e Metodologia OKR para Aprendizagem Deliberada.
+O usuário quer aprender sobre o escopo informado, mas NÃO possui domínio suficiente para saber quais metas e marcos são tecnicamente realistas e eficazes.
+Sua missão:
+A partir do escopo de estudo e do nível de conhecimento prévio (0 a 5):
+1. Formular com clareza cirúrgica pelo menos 3 objetivos QUANTITATIVOS realistas (ex.: horas em modo foco, quantidade de provas de conceito/protótipos construídos, índice de acerto >=90% em avaliações, testes unitários ou benchmarks).
+2. Formular pelo menos 2 objetivos QUALITATIVOS (ex.: articulação do modelo mental sem jargão, diagnóstico de falhas em casos de borda, autonomia arquitetural para justificar trade-offs).
+3. Entregar o texto pronto, em linguagem técnica encorajadora, estruturado com marcadores claros e direto ao ponto.
+Responda em formato JSON puro com a chave "goalsText": string.`;
+
+  const prompt = `Escopo de Aprendizado: ${scope}
+Nível de Conhecimento Prévio: Nível ${knowledgeLevel} (${levelInfo.title}) - ${levelInfo.description}
+
+Formule ao menos 3 objetivos quantitativos e ao menos 2 objetivos qualitativos perfeitamente calibrados para este nível de partida.`;
+
+  try {
+    const rawResult = await callGemini(prompt, systemInstruction, settings);
+    const cleanJson = extractCleanJSON(rawResult);
+    const parsed = JSON.parse(cleanJson);
+    return parsed.goalsText || parsed.targetGoals || cleanJson;
+  } catch (err) {
+    console.error('Failed to generate suggested goals with Gemini:', err);
+    if (settings.useMockFallback) {
+      return generateMockSuggestedGoals(scope, knowledgeLevel);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Mock generator for suggested goals
+ */
+function generateMockSuggestedGoals(scope: string, knowledgeLevel: number): string {
+  const levelText = [
+    'iniciante absoluto (estudo a partir de primeiros princípios e zero jargão)',
+    'familiarização conceitual (construção de vocabulário e fluxo básico)',
+    'consolidação prática (superação do conhecimento superficial por código)',
+    'aprofundamento inicial (autonomia em implementação e casos comuns)',
+    'refinamento avançado (domínio de casos de borda e decisões de design)',
+    'maestria técnica (arquitetura extrema, internals e benchmarks de escala)'
+  ][knowledgeLevel] || 'aprendizado deliberado';
+
+  const baseGoals = [
+    `🎯 Objetivos Calibrados por IA (Nível ${knowledgeLevel} - ${levelText})`,
+    '',
+    '📊 Metas Quantitativas:',
+    `1. Acumular no mínimo ${10 + knowledgeLevel * 4} horas de foco deliberado no cronômetro da aplicação, distribuídas ao longo das etapas.`,
+    `2. Construir ao menos ${knowledgeLevel <= 2 ? '2 implementações práticas do zero' : '3 provas de conceito resilientes com testes automatizados'}.`,
+    `3. Atingir pontuação mínima de 90% em todas as 5 avaliações adaptativas de cada etapa sem pular questionamentos.`,
+    '',
+    '💡 Metas Qualitativas:',
+    `1. Dominar a capacidade de explicar a arquitetura central de "${scope.slice(0, 40)}..." para outro desenvolvedor a partir de primeiros princípios, sem memorização mecânica.`,
+    `2. Conseguir diagnosticar, induzir e corrigir com autonomia pelo menos 3 cenários críticos de falha ou casos de borda neste domínio.`
+  ];
+
+  return baseGoals.join('\n');
+}
+
+/**
  * Generate full learning roadmap structured into:
  * Stages -> 5 Topics each -> Subtopics, Research Guide, 5 Questions
  */
@@ -93,7 +170,8 @@ export async function generateLearningRoadmap(
   params: GenerateRoadmapParams,
   settings: AISettings
 ): Promise<Stage[]> {
-  // If no API key is provided and mock fallback is active, generate realistic pedagogical roadmap
+  const levelInfo = KNOWLEDGE_LEVELS.find(l => l.level === params.knowledgeLevel) || KNOWLEDGE_LEVELS[0];
+
   if (!settings.apiKey?.trim()) {
     if (settings.useMockFallback) {
       return generateMockRoadmap(params);
@@ -103,6 +181,11 @@ export async function generateLearningRoadmap(
 
   const systemInstruction = `Você é um Arquiteto de Aprendizagem e Engenheiro de Software Sênior Especialista em Andragogia e Deep Work.
 Sua missão é projetar um roteiro de aprendizado orgânico, hiperestruturado e cirúrgico.
+IMPORTANTE: Calibre a profundidade pedagógica com base no Nível de Conhecimento Prévio informado (0 a 5).
+- Se nível 0 ou 1: comece com analogias primitivas, modelos mentais visuais e elimine suposições de jargão prévio.
+- Se nível 2 ou 3: foque em transição para prática deliberada, código do zero e desmistificação de tutoriais ingênuos.
+- Se nível 4 ou 5: pule o trivial, foque em internals, benchmarks de baixa latência, resiliência a falhas extremas e invariantes de sistema.
+
 Regras estritas de saída:
 1. Responda ESTRITAMENTE em formato JSON puro.
 2. A hierarquia DEVE ter 3 ou 4 Etapas (Stages).
@@ -123,6 +206,7 @@ Regras estritas de saída:
   const prompt = `Crie o roteiro de aprendizado para o seguinte projeto:
 Nome: ${params.name}
 O que quero aprender: ${params.scope}
+Nível de Conhecimento Prévio: Nível ${params.knowledgeLevel} (${levelInfo.title}) - ${levelInfo.description}
 Metas e Alvos: ${params.targetGoals}
 Período: ${params.startDate} até ${params.endDate}
 
@@ -225,7 +309,6 @@ export async function evaluateTaskAnswers(
     throw new Error('Por favor, responda às questões antes de submeter para avaliação.');
   }
 
-  // If no API key or mock fallback
   if (!settings.apiKey?.trim()) {
     if (settings.useMockFallback) {
       return generateMockEvaluation(task, answers);
@@ -263,16 +346,16 @@ Resposta do Aluno: ${answers[q.id] || '(Sem resposta)'}
 
 Gere a resposta JSON com o seguinte schema:
 {
-  "score": number, // 0 a 100
-  "passed": boolean, // true se score >= 90, false caso contrário
+  "score": number,
+  "passed": boolean,
   "correctiveReport": string,
-  "reinforcementMaterial": string, // presente se passed == true
-  "pedagogicalPerspective": string, // presente se passed == false
-  "newQuestions": Array<{ // presente se passed == false (exatamente 5 questões)
+  "reinforcementMaterial": string,
+  "pedagogicalPerspective": string,
+  "newQuestions": Array<{
     "id": string,
     "type": "objective" | "argumentative",
     "question": string,
-    "options": string[], // se objective
+    "options": string[],
     "feedback": string
   }>
 }`;
@@ -317,10 +400,21 @@ Gere a resposta JSON com o seguinte schema:
  * Built-in High-Fidelity Pedagogical Mock Generator
  */
 function generateMockRoadmap(params: GenerateRoadmapParams): Stage[] {
+  const isBeginner = params.knowledgeLevel <= 1;
+  const isAdvanced = params.knowledgeLevel >= 4;
+
   const stageTemplates = [
     {
-      title: 'Fundamentos Arquiteturais e Mentalidade',
-      desc: 'Compreensão de baixo nível, conceitos primitivos e modelagem de pensamento.',
+      title: isBeginner 
+        ? 'Fundamentos Primitivos e Analogias de Entrada' 
+        : isAdvanced 
+        ? 'Arquitetura Interna e Invariantes Críticos' 
+        : 'Fundamentos Arquiteturais e Mentalidade',
+      desc: isBeginner
+        ? 'Desconstrução inicial, modelos visuais e entendimento de baixo nível sem suposições prévias.'
+        : isAdvanced
+        ? 'Análise de primeiro princípios em sistemas de alta frequência e restrições de máquina.'
+        : 'Compreensão de baixo nível, conceitos primitivos e modelagem de pensamento.',
       topicPrefixes: [
         'Análise de Primeiros Princípios e Primitivas',
         'Taxonomia e Modelagem de Domínio',
@@ -341,7 +435,9 @@ function generateMockRoadmap(params: GenerateRoadmapParams): Stage[] {
       ]
     },
     {
-      title: 'Aprofundamento, Resolução de Gargalos e Maestria',
+      title: isAdvanced
+        ? 'Alta Escala, Benchmarks e Casos Limítrofes'
+        : 'Aprofundamento, Resolução de Gargalos e Maestria',
       desc: 'Casos extremos, performance de ponta e consolidação orgânica do conhecimento.',
       topicPrefixes: [
         'Profilagem de Desempenho e Diagnóstico de Fricção',
@@ -392,7 +488,7 @@ function generateMockRoadmap(params: GenerateRoadmapParams): Stage[] {
         }
       ],
       researchGuide: {
-        overview: `Nesta tarefa, seu objetivo autônomo é dominar os princípios de "${topicTitle}" sem atalhos cognitivos. Pesquise a documentação canônica, explore especificações técnicas e crie analogias mentais sólidas.`,
+        overview: `Nesta tarefa, seu objetivo autônomo é dominar os princípios de "${topicTitle}" calibrado para seu nível de conhecimento prévio (${params.knowledgeLevel}/5). Pesquise a documentação canônica, explore especificações técnicas e crie analogias mentais sólidas.`,
         keyConcepts: [
           'Invariantes de Sistema',
           'Alocação e Custo Cognitivo',

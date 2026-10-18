@@ -47,13 +47,17 @@ export const ProjectDetail: React.FC = () => {
       <div className="p-6 sm:p-8 rounded-2xl bg-neutral-900/50 border border-neutral-800/80 shadow-xl space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className={`text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                 activeProject.status === 'completed'
                   ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40'
                   : 'bg-neutral-800 text-neutral-300 border-neutral-700'
               }`}>
                 {activeProject.status === 'completed' ? 'Projeto Concluído' : 'Projeto Ativo'}
+              </span>
+
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-neutral-900 text-neutral-300 border border-neutral-800">
+                Nível Prévio: {activeProject.knowledgeLevel ?? 0}/5
               </span>
 
               {isViewingSingleTask && (

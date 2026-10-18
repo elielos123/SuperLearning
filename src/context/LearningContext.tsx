@@ -10,12 +10,13 @@ import {
   exportBackupJSON,
   importBackupJSON,
 } from '../services/storage';
-import { generateLearningRoadmap, evaluateTaskAnswers } from '../services/gemini';
+import { generateLearningRoadmap, evaluateTaskAnswers, generateSuggestedGoals } from '../services/gemini';
 import { sounds } from '../services/audio';
 
 interface CreateProjectPayload {
   name: string;
   scope: string;
+  knowledgeLevel: number;
   startDate: string;
   endDate: string;
   targetGoals: string;
@@ -31,6 +32,7 @@ interface LearningContextType {
   selectedTask: TopicTask | null;
   isGeneratingRoadmap: boolean;
   isEvaluating: boolean;
+  isGeneratingGoals: boolean;
   toastMessage: string | null;
   errorMessage: string | null;
 
@@ -45,6 +47,7 @@ interface LearningContextType {
 
   // Project Actions
   createProject: (payload: CreateProjectPayload) => Promise<void>;
+  suggestGoals: (scope: string, knowledgeLevel: number) => Promise<string>;
   deleteProject: (id: string) => void;
   updateAISettings: (newSettings: Partial<AISettings>) => void;
   exportData: () => void;
@@ -75,6 +78,7 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const [isGeneratingRoadmap, setIsGeneratingRoadmap] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isGeneratingGoals, setIsGeneratingGoals] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -226,6 +230,22 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
     showToast('Configurações de IA salvas com sucesso.');
   };
 
+  const suggestGoals = async (scope: string, knowledgeLevel: number): Promise<string> => {
+    setIsGeneratingGoals(true);
+    setErrorMessage(null);
+    try {
+      const goals = await generateSuggestedGoals(scope, knowledgeLevel, aiSettings);
+      showToast('Objetivos estruturados pela IA com sucesso!');
+      return goals;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao sugerir objetivos por IA.';
+      setErrorMessage(msg);
+      throw err;
+    } finally {
+      setIsGeneratingGoals(false);
+    }
+  };
+
   const createProject = async (payload: CreateProjectPayload) => {
     setIsGeneratingRoadmap(true);
     setErrorMessage(null);
@@ -237,6 +257,7 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
         id: `proj-${Date.now()}`,
         name: payload.name.trim(),
         learningScope: payload.scope.trim(),
+        knowledgeLevel: payload.knowledgeLevel ?? 0,
         startDate: payload.startDate,
         endDate: payload.endDate,
         targetGoals: payload.targetGoals.trim(),
@@ -526,6 +547,7 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
         selectedTask,
         isGeneratingRoadmap,
         isEvaluating,
+        isGeneratingGoals,
         toastMessage,
         errorMessage,
         setScreen,
@@ -536,6 +558,7 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
         clearError,
         showToast,
         createProject,
+        suggestGoals,
         deleteProject,
         updateAISettings,
         exportData,
