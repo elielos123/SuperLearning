@@ -100,7 +100,7 @@ vercel
    git add .
    git commit -m "feat: SuperLearning initial release"
    git branch -M main
-   git remote add origin https://github.com/SEU_USUARIO/superlearning.git
+   git remote add origin https://github.com/elielos123/SuperLearning.git
    git push -u origin main
    ```
 2. Acesse [vercel.com](https://vercel.com), clique em **"Add New Project"** e importe o repositório.
