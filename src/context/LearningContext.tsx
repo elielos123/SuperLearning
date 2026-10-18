@@ -16,6 +16,7 @@ import { sounds } from '../services/audio';
 interface CreateProjectPayload {
   name: string;
   scope: string;
+  knowledgeArea: string;
   knowledgeLevel: number;
   startDate: string;
   endDate: string;
@@ -47,7 +48,7 @@ interface LearningContextType {
 
   // Project Actions
   createProject: (payload: CreateProjectPayload) => Promise<void>;
-  suggestGoals: (scope: string, knowledgeLevel: number) => Promise<string>;
+  suggestGoals: (scope: string, knowledgeArea: string, knowledgeLevel: number) => Promise<string>;
   deleteProject: (id: string) => void;
   updateAISettings: (newSettings: Partial<AISettings>) => void;
   exportData: () => void;
@@ -230,11 +231,11 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
     showToast('Configurações de IA salvas com sucesso.');
   };
 
-  const suggestGoals = async (scope: string, knowledgeLevel: number): Promise<string> => {
+  const suggestGoals = async (scope: string, knowledgeArea: string, knowledgeLevel: number): Promise<string> => {
     setIsGeneratingGoals(true);
     setErrorMessage(null);
     try {
-      const goals = await generateSuggestedGoals(scope, knowledgeLevel, aiSettings);
+      const goals = await generateSuggestedGoals(scope, knowledgeArea, knowledgeLevel, aiSettings);
       showToast('Objetivos estruturados pela IA com sucesso!');
       return goals;
     } catch (err: unknown) {
@@ -257,6 +258,7 @@ export const LearningProvider: React.FC<{ children: ReactNode }> = ({ children }
         id: `proj-${Date.now()}`,
         name: payload.name.trim(),
         learningScope: payload.scope.trim(),
+        knowledgeArea: payload.knowledgeArea || 'Tecnologia & Programação',
         knowledgeLevel: payload.knowledgeLevel ?? 0,
         startDate: payload.startDate,
         endDate: payload.endDate,

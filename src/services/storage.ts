@@ -8,7 +8,7 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
   apiKey: '',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.8-flash',
   temperature: 0.7,
   useMockFallback: true,
 };
@@ -17,7 +17,19 @@ export const getStoredAISettings = (): AISettings => {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) return DEFAULT_AI_SETTINGS;
-    return { ...DEFAULT_AI_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    
+    // Automatically migrate deprecated models to gemini-3.8-flash
+    let model = parsed.model || 'gemini-3.8-flash';
+    if (model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash' || !model) {
+      model = 'gemini-3.8-flash';
+    }
+
+    return { 
+      ...DEFAULT_AI_SETTINGS, 
+      ...parsed,
+      model,
+    };
   } catch (err) {
     console.error('Failed to load AI settings from localStorage:', err);
     return DEFAULT_AI_SETTINGS;

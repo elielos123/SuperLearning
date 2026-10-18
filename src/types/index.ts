@@ -70,6 +70,7 @@ export interface Project {
   id: string;
   name: string;
   learningScope: string;
+  knowledgeArea: string; // Tecnologia, Línguas, Negócios, etc.
   knowledgeLevel: number; // 0 to 5
   startDate: string;
   endDate: string;
@@ -97,6 +98,18 @@ export type ActiveScreen =
   | 'project-detail'
   | 'task-execution'
   | 'ai-settings';
+
+export const KNOWLEDGE_AREAS = [
+  'Tecnologia & Programação',
+  'Idiomas & Linguística',
+  'Negócios, Finanças & Empreendedorismo',
+  'Ciências Exatas & Engenharia',
+  'Saúde, Biologia & Medicina',
+  'Humanidades, Filosofia & Ciências Sociais',
+  'Artes, Design & Criação',
+  'Concursos & Certificações Profissionais',
+  'Outra Área de Conhecimento'
+] as const;
 
 export const KNOWLEDGE_LEVELS = [
   {

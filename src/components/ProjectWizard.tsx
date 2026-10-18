@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLearning } from '../context/LearningContext';
-import { KNOWLEDGE_LEVELS } from '../types';
+import { KNOWLEDGE_LEVELS, KNOWLEDGE_AREAS } from '../types';
 import { 
   ArrowRight, 
   ArrowLeft, 
@@ -13,8 +13,21 @@ import {
   Info,
   GraduationCap,
   Wand2,
-  CheckCircle2
+  CheckCircle2,
+  LayoutGrid
 } from 'lucide-react';
+
+const AREA_ICONS: Record<string, string> = {
+  'Tecnologia & Programação': '💻',
+  'Idiomas & Linguística': '🌐',
+  'Negócios, Finanças & Empreendedorismo': '📊',
+  'Ciências Exatas & Engenharia': '⚙️',
+  'Saúde, Biologia & Medicina': '🧬',
+  'Humanidades, Filosofia & Ciências Sociais': '📚',
+  'Artes, Design & Criação': '🎨',
+  'Concursos & Certificações Profissionais': '🏆',
+  'Outra Área de Conhecimento': '🔍',
+};
 
 export const ProjectWizard: React.FC = () => {
   const { 
@@ -27,11 +40,13 @@ export const ProjectWizard: React.FC = () => {
     aiSettings 
   } = useLearning();
 
+  const TOTAL_STEPS = 6;
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Form Fields
   const [name, setName] = useState('');
   const [scope, setScope] = useState('');
+  const [knowledgeArea, setKnowledgeArea] = useState<string>('');
   const [knowledgeLevel, setKnowledgeLevel] = useState<number>(0);
   
   const today = new Date().toISOString().split('T')[0];
@@ -44,9 +59,10 @@ export const ProjectWizard: React.FC = () => {
 
   const canProceedStep1 = name.trim().length >= 3;
   const canProceedStep2 = scope.trim().length >= 10;
-  const canProceedStep3 = knowledgeLevel >= 0 && knowledgeLevel <= 5;
-  const canProceedStep4 = startDate && endDate && startDate <= endDate;
-  const canProceedStep5 = targetGoals.trim().length >= 5;
+  const canProceedStep3 = knowledgeArea.trim().length > 0;
+  const canProceedStep4 = knowledgeLevel >= 0 && knowledgeLevel <= 5;
+  const canProceedStep5 = startDate && endDate && startDate <= endDate;
+  const canProceedStep6 = targetGoals.trim().length >= 5;
 
   const handleNext = () => {
     setValidationError(null);
@@ -59,10 +75,14 @@ export const ProjectWizard: React.FC = () => {
       return;
     }
     if (currentStep === 3 && !canProceedStep3) {
-      setValidationError('Selecione seu nível de conhecimento prévio (0 a 5).');
+      setValidationError('Selecione a área de conhecimento do projeto para que a IA possa personalizar o roteiro.');
       return;
     }
     if (currentStep === 4 && !canProceedStep4) {
+      setValidationError('Selecione seu nível de conhecimento prévio (0 a 5).');
+      return;
+    }
+    if (currentStep === 5 && !canProceedStep5) {
       setValidationError('A data final deve ser igual ou posterior à data de início.');
       return;
     }
@@ -77,7 +97,7 @@ export const ProjectWizard: React.FC = () => {
   const handleAIAssistGoals = async () => {
     setValidationError(null);
     try {
-      const generated = await suggestGoals(scope, knowledgeLevel);
+      const generated = await suggestGoals(scope, knowledgeArea, knowledgeLevel);
       setTargetGoals(generated);
     } catch {
       // Handled in context
@@ -88,7 +108,7 @@ export const ProjectWizard: React.FC = () => {
     e.preventDefault();
     setValidationError(null);
 
-    if (!canProceedStep5) {
+    if (!canProceedStep6) {
       setValidationError('Por favor, defina os alvos do projeto (ou utilize o botão "Ajuda da IA para formulação de objetivos").');
       return;
     }
@@ -97,6 +117,7 @@ export const ProjectWizard: React.FC = () => {
       await createProject({
         name,
         scope,
+        knowledgeArea,
         knowledgeLevel,
         startDate,
         endDate,
@@ -110,9 +131,10 @@ export const ProjectWizard: React.FC = () => {
   const steps = [
     { number: 1, label: 'Nome' },
     { number: 2, label: 'Escopo' },
-    { number: 3, label: 'Nível Prévio' },
-    { number: 4, label: 'Cronograma' },
-    { number: 5, label: 'Alvos' },
+    { number: 3, label: 'Área' },
+    { number: 4, label: 'Nível' },
+    { number: 5, label: 'Datas' },
+    { number: 6, label: 'Alvos' },
   ];
 
   return (
@@ -126,7 +148,7 @@ export const ProjectWizard: React.FC = () => {
               Novo Projeto de Aprendizado
             </h2>
             <p className="text-xs text-neutral-400 mt-1">
-              Etapa {currentStep} de 5 • Estruturação guiada por inteligência adaptativa
+              Etapa {currentStep} de {TOTAL_STEPS} • Estruturação guiada por inteligência adaptativa
             </p>
           </div>
           <button
@@ -139,7 +161,7 @@ export const ProjectWizard: React.FC = () => {
         </div>
 
         {/* Step Progress Indicators */}
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${TOTAL_STEPS}, 1fr)` }}>
           {steps.map((step) => {
             const isDone = step.number < currentStep;
             const isCurrent = step.number === currentStep;
@@ -197,14 +219,14 @@ export const ProjectWizard: React.FC = () => {
               </div>
               <div className="space-y-1.5 max-w-sm">
                 <h3 className="text-base font-medium text-white">
-                  Construindo Roteiro Calibrado (Nível {knowledgeLevel}/5)
+                  Construindo Roteiro Calibrado — {knowledgeArea} (Nível {knowledgeLevel}/5)
                 </h3>
                 <p className="text-xs text-neutral-400 leading-relaxed">
-                  A IA está estruturando etapas estratégicas, 5 tópicos por etapa, guias autônomos e 5 desafios avaliativos rigorosamente ajustados ao seu nível de partida.
+                  A IA está estruturando etapas estratégicas, 5 tópicos por etapa, guias autônomos e 5 desafios avaliativos rigorosamente ajustados ao seu domínio e nível de partida.
                 </p>
               </div>
               <div className="text-[11px] font-mono text-emerald-400/80 animate-pulse">
-                Processando modelo mental & andragogia...
+                Processando modelo mental & andragogia em {knowledgeArea}...
               </div>
             </div>
           )}
@@ -242,9 +264,10 @@ export const ProjectWizard: React.FC = () => {
                 <span className="text-[11px] text-neutral-500 block mb-1.5">Exemplos rápidos:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {[
-                    'Design System & Microfrontends',
-                    'Deep Learning & LLM Fine-tuning',
+                    'Espanhol Conversacional',
+                    'Deep Learning & LLMs',
                     'Algoritmos Concorrentes em Go',
+                    'Finanças Pessoais & Investimentos',
                     'Next.js 15 & Server Actions'
                   ].map((sugg) => (
                     <button
@@ -270,31 +293,75 @@ export const ProjectWizard: React.FC = () => {
                   2. O que quero aprender (Escopo)
                 </label>
                 <p className="text-xs text-neutral-500">
-                  Descreva conceitos, tecnologias, problemas que deseja solucionar e o nível de profundidade desejado.
+                  Descreva com detalhes o que você quer dominar: conceitos, problemas a resolver, nível de profundidade desejado. Quanto mais específico, mais personalizado será o roteiro.
                 </p>
               </div>
 
               <textarea
                 autoFocus
-                rows={5}
+                rows={6}
                 value={scope}
                 onChange={(e) => setScope(e.target.value)}
                 placeholder="Descreva detalhadamente o que você precisa dominar. Ex: Quero aprender a arquitetar bancos de dados distribuídos com consenso Paxos/Raft, particionamento consistente e resiliência a partições de rede com foco em métricas de baixa latência."
                 className="w-full px-4 py-3 rounded-xl bg-neutral-950 border border-neutral-800 text-white placeholder-neutral-600 focus:outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/50 text-sm leading-relaxed transition-all resize-none"
               />
+              <p className="text-[11px] text-neutral-600 font-mono">{scope.length} caracteres · Mínimo: 10</p>
             </div>
           )}
 
-          {/* STEP 3: Nível de Conhecimento Prévio (0 a 5) */}
+          {/* STEP 3: Área de Conhecimento */}
           {currentStep === 3 && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="space-y-1">
                 <label className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
-                  3. Nível de Conhecimento Prévio (0 a 5)
+                  <LayoutGrid className="w-3.5 h-3.5 text-amber-400" />
+                  3. Área de Conhecimento
                 </label>
                 <p className="text-xs text-neutral-400 font-light">
-                  Seja sincero com seu ponto de partida. A IA calibrará o vocabulário, a profundidade das etapas e os objetivos especificamente para este nível.
+                  Selecione o domínio principal do projeto. A IA usará esta categoria para construir tópicos com vocabulário e metodologia específicos da área.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                {KNOWLEDGE_AREAS.map((area) => {
+                  const isSelected = knowledgeArea === area;
+                  const icon = AREA_ICONS[area] || '🔍';
+                  return (
+                    <div
+                      key={area}
+                      onClick={() => setKnowledgeArea(area)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
+                        isSelected
+                          ? 'bg-amber-950/30 border-amber-500/70 shadow-md shadow-amber-950/20'
+                          : 'bg-neutral-950/60 border-neutral-800 hover:border-neutral-700 hover:bg-neutral-900/40'
+                      }`}
+                    >
+                      <span className="text-xl shrink-0">{icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className={`text-xs font-medium leading-tight block truncate ${isSelected ? 'text-white' : 'text-neutral-300'}`}>
+                          {area}
+                        </span>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Nível de Conhecimento Prévio (0 a 5) */}
+          {currentStep === 4 && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="space-y-1">
+                <label className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
+                  4. Nível de Conhecimento Prévio (0 a 5)
+                </label>
+                <p className="text-xs text-neutral-400 font-light">
+                  Seja sincero com seu ponto de partida. A IA calibrará o vocabulário, a profundidade das etapas e os objetivos especificamente para este nível dentro de <span className="text-amber-400 font-medium">{knowledgeArea}</span>.
                 </p>
               </div>
 
@@ -339,13 +406,13 @@ export const ProjectWizard: React.FC = () => {
             </div>
           )}
 
-          {/* STEP 4: Data de Início e Data Final */}
-          {currentStep === 4 && (
+          {/* STEP 5: Data de Início e Data Final */}
+          {currentStep === 5 && (
             <div className="space-y-5 animate-in fade-in duration-200">
               <div className="space-y-1">
                 <label className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-neutral-400" />
-                  4. Cronograma (Datas)
+                  5. Cronograma (Datas)
                 </label>
                 <p className="text-xs text-neutral-500">
                   Estabeleça o horizonte temporal para criar senso de urgência e cadência orgânica.
@@ -373,20 +440,47 @@ export const ProjectWizard: React.FC = () => {
                   />
                 </div>
               </div>
+
+              {/* Summary card */}
+              <div className="p-4 rounded-xl bg-neutral-950/70 border border-neutral-800 space-y-2">
+                <p className="text-[11px] font-mono text-neutral-500 uppercase tracking-wider">Resumo do Projeto</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div>
+                    <span className="text-neutral-500">Projeto: </span>
+                    <span className="text-neutral-200">{name}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Área: </span>
+                    <span className="text-amber-400">{knowledgeArea.split(',')[0]}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Nível: </span>
+                    <span className="text-emerald-400">{knowledgeLevel}/5</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Prazo: </span>
+                    <span className="text-neutral-200">
+                      {startDate && endDate
+                        ? `${Math.ceil((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24))} dias`
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* STEP 5: Alvos e Metas (Com Botão de Ajuda da IA) */}
-          {currentStep === 5 && (
+          {/* STEP 6: Alvos e Metas (Com Botão de Ajuda da IA) */}
+          {currentStep === 6 && (
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="space-y-0.5">
                   <label className="text-xs font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
                     <Target className="w-3.5 h-3.5 text-emerald-400" />
-                    5. Alvos e Objetivos (Ao menos 3 Quantitativos e 2 Qualitativos)
+                    6. Alvos e Objetivos (≥ 3 Quantitativos e ≥ 2 Qualitativos)
                   </label>
                   <p className="text-xs text-neutral-500 font-light">
-                    Não sabe exatamente como mensurar? A IA pode formular objetivos realistas para você com base no seu escopo e nível ({knowledgeLevel}/5).
+                    Não sabe exatamente como mensurar? A IA pode formular objetivos realistas para você com base no escopo, área <span className="text-amber-400">({knowledgeArea.split(',')[0]})</span> e nível ({knowledgeLevel}/5).
                   </p>
                 </div>
 
@@ -396,7 +490,7 @@ export const ProjectWizard: React.FC = () => {
                   onClick={handleAIAssistGoals}
                   disabled={isGeneratingGoals}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-500/40 text-xs font-medium transition-all active:scale-95 cursor-pointer shrink-0 disabled:opacity-50"
-                  title="A IA analisa seu escopo e nível de conhecimento para propor objetivos técnicos realistas"
+                  title="A IA analisa seu escopo, área de conhecimento e nível para propor objetivos técnicos realistas"
                 >
                   {isGeneratingGoals ? (
                     <>
@@ -446,7 +540,7 @@ export const ProjectWizard: React.FC = () => {
               </button>
             ) : <div />}
 
-            {currentStep < 5 ? (
+            {currentStep < TOTAL_STEPS ? (
               <button
                 type="button"
                 onClick={handleNext}
@@ -459,7 +553,7 @@ export const ProjectWizard: React.FC = () => {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isGeneratingRoadmap || !canProceedStep5}
+                disabled={isGeneratingRoadmap || !canProceedStep6}
                 className="inline-flex items-center gap-2 text-xs font-medium text-neutral-950 px-5 py-2.5 rounded-lg bg-emerald-400 hover:bg-emerald-300 transition-all cursor-pointer shadow-md shadow-emerald-950 disabled:opacity-50"
               >
                 <Sparkles className="w-3.5 h-3.5" />

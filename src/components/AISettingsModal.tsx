@@ -116,9 +116,10 @@ export const AISettingsModal: React.FC<AISettingsModalProps> = ({ isOpen, onClos
               onChange={(e) => setModel(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl bg-neutral-950 border border-neutral-800 text-white text-xs font-mono focus:outline-none focus:border-emerald-500/70 transition-all cursor-pointer"
             >
-              <option value="gemini-2.5-flash">gemini-2.5-flash (Mais Recente e Rápido - Recomendado)</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash (Estável e Econômico)</option>
-              <option value="gemini-2.0-flash">gemini-2.0-flash (Alta Velocidade)</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash (Recomendado - Mais Recente e Avançado)</option>
+              <option value="gemini-3-flash">gemini-3-flash (Alta Performance)</option>
+              <option value="gemini-2.0-flash">gemini-2.0-flash (Ultra Rápido)</option>
+              <option value="gemini-1.5-pro">gemini-1.5-pro (Raciocínio Complexo)</option>
             </select>
           </div>
 

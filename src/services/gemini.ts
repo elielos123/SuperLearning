@@ -4,6 +4,7 @@ import { KNOWLEDGE_LEVELS } from '../types';
 interface GenerateRoadmapParams {
   name: string;
   scope: string;
+  knowledgeArea: string;
   knowledgeLevel: number;
   startDate: string;
   endDate: string;
@@ -22,6 +23,7 @@ function extractCleanJSON(text: string): string {
 
 /**
  * Call Google Gemini REST API directly with response_mime_type: "application/json"
+ * Uses gemini-3.8-flash by default as requested by the Gemini API
  */
 async function callGemini(prompt: string, systemInstruction: string, settings: AISettings): Promise<string> {
   const apiKey = settings.apiKey?.trim();
@@ -30,7 +32,12 @@ async function callGemini(prompt: string, systemInstruction: string, settings: A
     throw new Error('Chave de API do Gemini não configurada. Insira sua chave nas Configurações de IA.');
   }
 
-  const model = settings.model || 'gemini-2.5-flash';
+  // Automatically migrate deprecated model to gemini-3.8-flash
+  let model = settings.model || 'gemini-3.8-flash';
+  if (model === 'gemini-2.5-flash' || model === 'gemini-1.5-flash') {
+    model = 'gemini-3.8-flash';
+  }
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const payload = {
@@ -89,10 +96,11 @@ async function callGemini(prompt: string, systemInstruction: string, settings: A
 
 /**
  * AI Assistance to Formulate Realistic Quantitative & Qualitative Goals
- * Partindo do pressuposto que o usuário não tem conhecimento suficiente para estruturar metas claras.
+ * Tailored to the Knowledge Area, Scope, and Prior Knowledge Level (0 to 5)
  */
 export async function generateSuggestedGoals(
   scope: string,
+  knowledgeArea: string,
   knowledgeLevel: number,
   settings: AISettings
 ): Promise<string> {
@@ -100,24 +108,25 @@ export async function generateSuggestedGoals(
 
   if (!settings.apiKey?.trim()) {
     if (settings.useMockFallback) {
-      return generateMockSuggestedGoals(scope, knowledgeLevel);
+      return generateDomainSuggestedGoals(scope, knowledgeArea, knowledgeLevel);
     }
     throw new Error('Configure sua Chave de API do Gemini ou ative o Modo Demonstração nas Configurações.');
   }
 
-  const systemInstruction = `Você é um Engenheiro Sênior e Especialista em Andragogia e Metodologia OKR para Aprendizagem Deliberada.
-O usuário quer aprender sobre o escopo informado, mas NÃO possui domínio suficiente para saber quais metas e marcos são tecnicamente realistas e eficazes.
+  const systemInstruction = `Você é um Mentor Sênior Especialista em ${knowledgeArea} e Engenheiro de Andragogia Focada.
+O usuário quer aprender sobre o escopo informado, mas não possui experiência para saber quais metas e marcos são tecnicamente eficazes.
 Sua missão:
-A partir do escopo de estudo e do nível de conhecimento prévio (0 a 5):
-1. Formular com clareza cirúrgica pelo menos 3 objetivos QUANTITATIVOS realistas (ex.: horas em modo foco, quantidade de provas de conceito/protótipos construídos, índice de acerto >=90% em avaliações, testes unitários ou benchmarks).
-2. Formular pelo menos 2 objetivos QUALITATIVOS (ex.: articulação do modelo mental sem jargão, diagnóstico de falhas em casos de borda, autonomia arquitetural para justificar trade-offs).
-3. Entregar o texto pronto, em linguagem técnica encorajadora, estruturado com marcadores claros e direto ao ponto.
+A partir do escopo, da Área de Conhecimento ("${knowledgeArea}") e do Nível Prévio (${knowledgeLevel}/5):
+1. Formular com extrema clareza pelo menos 3 objetivos QUANTITATIVOS realistas (ex.: horas de foco no cronômetro, número de projetos/exercícios/textos construídos, índice de acerto >=90% em avaliações, testes práticos).
+2. Formular pelo menos 2 objetivos QUALITATIVOS (ex.: articulação do modelo mental sem jargão, diagnóstico de falhas, capacidade de conversação/análise crítica no domínio).
+3. Entregar o texto pronto e estruturado em português, com linguagem profissional e sem floreios vazios.
 Responda em formato JSON puro com a chave "goalsText": string.`;
 
-  const prompt = `Escopo de Aprendizado: ${scope}
+  const prompt = `Área de Conhecimento: ${knowledgeArea}
+Escopo de Aprendizado: ${scope}
 Nível de Conhecimento Prévio: Nível ${knowledgeLevel} (${levelInfo.title}) - ${levelInfo.description}
 
-Formule ao menos 3 objetivos quantitativos e ao menos 2 objetivos qualitativos perfeitamente calibrados para este nível de partida.`;
+Formule ao menos 3 objetivos quantitativos e ao menos 2 objetivos qualitativos específicos e realistas para este tema.`;
 
   try {
     const rawResult = await callGemini(prompt, systemInstruction, settings);
@@ -127,44 +136,68 @@ Formule ao menos 3 objetivos quantitativos e ao menos 2 objetivos qualitativos p
   } catch (err) {
     console.error('Failed to generate suggested goals with Gemini:', err);
     if (settings.useMockFallback) {
-      return generateMockSuggestedGoals(scope, knowledgeLevel);
+      return generateDomainSuggestedGoals(scope, knowledgeArea, knowledgeLevel);
     }
     throw err;
   }
 }
 
 /**
- * Mock generator for suggested goals
+ * Domain-specific Mock Goal Generator
  */
-function generateMockSuggestedGoals(scope: string, knowledgeLevel: number): string {
-  const levelText = [
-    'iniciante absoluto (estudo a partir de primeiros princípios e zero jargão)',
-    'familiarização conceitual (construção de vocabulário e fluxo básico)',
-    'consolidação prática (superação do conhecimento superficial por código)',
-    'aprofundamento inicial (autonomia em implementação e casos comuns)',
-    'refinamento avançado (domínio de casos de borda e decisões de design)',
-    'maestria técnica (arquitetura extrema, internals e benchmarks de escala)'
-  ][knowledgeLevel] || 'aprendizado deliberado';
+function generateDomainSuggestedGoals(scope: string, knowledgeArea: string, knowledgeLevel: number): string {
+  const isLanguage = knowledgeArea.includes('Idioma');
+  const isBusiness = knowledgeArea.includes('Negócio');
 
-  const baseGoals = [
-    `🎯 Objetivos Calibrados por IA (Nível ${knowledgeLevel} - ${levelText})`,
-    '',
-    '📊 Metas Quantitativas:',
-    `1. Acumular no mínimo ${10 + knowledgeLevel * 4} horas de foco deliberado no cronômetro da aplicação, distribuídas ao longo das etapas.`,
-    `2. Construir ao menos ${knowledgeLevel <= 2 ? '2 implementações práticas do zero' : '3 provas de conceito resilientes com testes automatizados'}.`,
-    `3. Atingir pontuação mínima de 90% em todas as 5 avaliações adaptativas de cada etapa sem pular questionamentos.`,
-    '',
-    '💡 Metas Qualitativas:',
-    `1. Dominar a capacidade de explicar a arquitetura central de "${scope.slice(0, 40)}..." para outro desenvolvedor a partir de primeiros princípios, sem memorização mecânica.`,
-    `2. Conseguir diagnosticar, induzir e corrigir com autonomia pelo menos 3 cenários críticos de falha ou casos de borda neste domínio.`
-  ];
+  if (isLanguage) {
+    return [
+      `🎯 Metas de Aprendizado em Idiomas (Nível ${knowledgeLevel}/5)`,
+      '',
+      '📊 Objetivos Quantitativos:',
+      `1. Acumular no mínimo ${15 + knowledgeLevel * 5} horas de imersão e foco ativo registradas no cronômetro da plataforma.`,
+      `2. Reter ativamente e aplicar em frases ao menos ${150 + knowledgeLevel * 100} palavras e estruturas sintáticas essenciais de "${scope.slice(0, 30)}...".`,
+      `3. Atingir 90%+ de acerto nos desafios avaliativos de compreensão auditiva, gramática e conversação de cada etapa.`,
+      '',
+      '💡 Objetivos Qualitativos:',
+      `1. Conseguir manter um diálogo espontâneo de 5 minutos sobre situações cotidianas ou temas do escopo sem recorrer à tradução mental.`,
+      `2. Compreender a lógica fonética e gramatical nativa (sons, conjugações e entonação) em materiais autênticos (áudios/textos).`
+    ].join('\n');
+  }
 
-  return baseGoals.join('\n');
+  if (isBusiness) {
+    return [
+      `🎯 Metas Estratégicas de Negócios (Nível ${knowledgeLevel}/5)`,
+      '',
+      '📊 Objetivos Quantitativos:',
+      `1. Acumular no mínimo ${12 + knowledgeLevel * 4} horas de estudo analítico no cronômetro da plataforma.`,
+      `2. Estruturar ao menos 2 análises de caso completas com planilhas, modelos financeiros ou planos de ação executáveis.`,
+      `3. Obter pontuação superior a 90% em todos os 5 desafios de validação técnica por etapa.`,
+      '',
+      '💡 Objetivos Qualitativos:',
+      `1. Tomar decisões estratégicas fundamentadas em métricas de risco, retorno e viabilidade econômica para "${scope.slice(0, 30)}...".`,
+      `2. Apresentar um pitch de síntese executiva defendendo os trade-offs do modelo sem usar jargões vagos.`
+    ].join('\n');
+  }
+
+  // Default / Tech
+  return [
+    `🎯 Metas Calibradas por IA (${knowledgeArea} - Nível ${knowledgeLevel}/5)`,
+    '',
+    '📊 Objetivos Quantitativos:',
+    `1. Registrar no mínimo ${10 + knowledgeLevel * 5} horas de prática deliberada no cronômetro de foco da aplicação.`,
+    `2. Desenvolver do zero ao menos ${knowledgeLevel <= 2 ? '2 projetos/provas de conceito funcionais' : '3 soluções completas com testes automatizados e benchmarks'}.`,
+    `3. Atingir no mínimo 90% de aproveitamento em todas as baterias de avaliação adaptativa.`,
+    '',
+    '💡 Objetivos Qualitativos:',
+    `1. Explicar o modelo mental de "${scope.slice(0, 35)}..." para outro profissional a partir de primeiros princípios, sem copiar soluções prontas.`,
+    `2. Identificar, reproduzir e solucionar com autonomia pelo menos 3 cenários críticos de falha ou casos extremos no domínio.`
+  ].join('\n');
 }
 
 /**
  * Generate full learning roadmap structured into:
  * Stages -> 5 Topics each -> Subtopics, Research Guide, 5 Questions
+ * Strict domain personalization
  */
 export async function generateLearningRoadmap(
   params: GenerateRoadmapParams,
@@ -174,43 +207,50 @@ export async function generateLearningRoadmap(
 
   if (!settings.apiKey?.trim()) {
     if (settings.useMockFallback) {
-      return generateMockRoadmap(params);
+      return generateDomainRoadmap(params);
     }
     throw new Error('Por favor, informe sua Chave de API do Gemini ou ative o Modo Demonstração nas Configurações de IA.');
   }
 
-  const systemInstruction = `Você é um Arquiteto de Aprendizagem e Engenheiro de Software Sênior Especialista em Andragogia e Deep Work.
-Sua missão é projetar um roteiro de aprendizado orgânico, hiperestruturado e cirúrgico.
-IMPORTANTE: Calibre a profundidade pedagógica com base no Nível de Conhecimento Prévio informado (0 a 5).
-- Se nível 0 ou 1: comece com analogias primitivas, modelos mentais visuais e elimine suposições de jargão prévio.
-- Se nível 2 ou 3: foque em transição para prática deliberada, código do zero e desmistificação de tutoriais ingênuos.
-- Se nível 4 ou 5: pule o trivial, foque em internals, benchmarks de baixa latência, resiliência a falhas extremas e invariantes de sistema.
+  const systemInstruction = `Você é um Arquiteto de Aprendizagem de Elite Especialista em ${params.knowledgeArea} e Andragogia de Alto Desempenho.
+Sua missão é criar um roteiro de aprendizado orgânico, hiperestruturado e 100% PERSONALIZADO para o assunto "${params.name}" dentro da área "${params.knowledgeArea}".
 
-Regras estritas de saída:
+DIRETRIZES FUNDAMENTAIS ANTI-PADRONIZAÇÃO:
+1. PROIBIDO USAR NOMES GENÉRICOS DE TEMPLATE (como "Análise de Primeiros Princípios e Primitivas", "Taxonomia e Modelagem de Domínio", etc.).
+2. TODOS os títulos de Etapas e Tópicos DEVEM SER NOMES TÉCNICOS E CONCRETOS do tema que o aluno deseja aprender.
+   - Se for Idioma (ex: Espanhol): Use tópicos como "Fonética e Sons Distintos", "Verbos Ser vs Estar", "Pretéritos Indefinido e Imperfeito", "Expressões Idiomáticas e Diálogos".
+   - Se for Tecnologia (ex: Docker): Use "Arquitetura de Namespaces e Cgroups", "Dockerfile Multi-stage", "Redes Bridge e Overlay", "Volumes e Persistência".
+   - Se for Finanças: Use "Demonstração do Resultado (DRE)", "Fluxo de Caixa Livre", "Múltiplos EV/EBITDA e P/L".
+3. Adapte a profundidade pedagógica estritamente ao Nível de Conhecimento Prévio (${params.knowledgeLevel}/5):
+   - Nível 0-1: Fundamentos essenciais, vocabulário primitivo, sem assumir pré-requisitos não explicados.
+   - Nível 2-3: Construção prática guiada, superação de tutoriais ingênuos, código/análise do zero.
+   - Nível 4-5: Casos extremos, arquitetura de baixo nível, benchmarks, depuração avançada e nuances de escala.
+
+REGRAS ESTRITAS DE FORMATO:
 1. Responda ESTRITAMENTE em formato JSON puro.
-2. A hierarquia DEVE ter 3 ou 4 Etapas (Stages).
+2. Crie 3 ou 4 Etapas (Stages).
 3. CADA Etapa DEVE CONTER EXATAMENTE 5 Tópicos (Topics). Nem mais, nem menos.
 4. CADA Tópico deve conter:
-   - title: string
-   - description: síntese do objetivo
+   - title: nome específico do tópico no assunto
+   - description: síntese do objetivo de estudo
    - subtopics: lista de 3 a 5 subtópicos práticos (title, description)
    - researchGuide: {
-       overview: detalhamento do que pesquisar de forma autônoma,
-       keyConcepts: 4 a 6 conceitos-chave,
-       searchQueries: 3 a 5 termos de busca cirúrgicos para Google/Docs/Arxiv,
-       reflectionQuestions: 3 perguntas instigantes para guiar o estudo,
-       recommendedApproaches: 2 a 3 práticas recomendadas
+       overview: detalhamento técnico específico sobre o que pesquisar,
+       keyConcepts: 4 a 6 termos reais do domínio,
+       searchQueries: 3 a 5 buscas precisas para documentação oficial,
+       reflectionQuestions: 3 perguntas instigantes sobre o tópico,
+       recommendedApproaches: 2 a 3 métodos de prática
      }
    - questions: EXATAMENTE 5 desafios avaliativos (3 objetivos com options e 2 argumentativos/práticos). Cada questão com: id, type ('objective'|'argumentative'), question, options (se objective), feedback (critério de resposta ideal).`;
 
-  const prompt = `Crie o roteiro de aprendizado para o seguinte projeto:
-Nome: ${params.name}
-O que quero aprender: ${params.scope}
+  const prompt = `Área de Conhecimento: ${params.knowledgeArea}
+Nome do Projeto: ${params.name}
+O que quero aprender (Escopo): ${params.scope}
 Nível de Conhecimento Prévio: Nível ${params.knowledgeLevel} (${levelInfo.title}) - ${levelInfo.description}
 Metas e Alvos: ${params.targetGoals}
 Período: ${params.startDate} até ${params.endDate}
 
-Estruture em JSON com a chave "stages": Array<{
+Gere o roteiro em JSON com a chave "stages": Array<{
   id: string,
   order: number,
   title: string,
@@ -251,7 +291,7 @@ Estruture em JSON com a chave "stages": Array<{
     return stagesData.map((stage: any, sIdx: number) => ({
       id: stage.id || `stage-${sIdx + 1}-${Date.now()}`,
       order: stage.order || sIdx + 1,
-      title: stage.title || `Etapa ${sIdx + 1}`,
+      title: stage.title || `Etapa ${sIdx + 1}: ${params.name}`,
       description: stage.description || '',
       completed: false,
       topics: (stage.topics || []).slice(0, 5).map((topic: any, tIdx: number) => ({
@@ -267,11 +307,11 @@ Estruture em JSON com a chave "stages": Array<{
           completed: false,
         })),
         researchGuide: topic.researchGuide || {
-          overview: 'Pesquise a documentação técnica oficial e estude a arquitetura conceitual deste tópico.',
-          keyConcepts: ['Fundamentos', 'Implementação', 'Casos de Borda', 'Melhores Práticas'],
-          searchQueries: [`${topic.title} deep dive`, `${topic.title} architecture best practices`],
-          reflectionQuestions: ['Como esse conceito se conecta ao objetivo final do projeto?'],
-          recommendedApproaches: ['Construa uma prova de conceito rápida e teste em código.'],
+          overview: `Pesquise as referências principais e documentação de ${topic.title}.`,
+          keyConcepts: [topic.title, 'Princípios', 'Aplicações', 'Prática'],
+          searchQueries: [`${topic.title} documentação`, `${topic.title} tutorial aprofundado`],
+          reflectionQuestions: ['Qual é a função central deste conceito no projeto?'],
+          recommendedApproaches: ['Aplique em um caso prático imediatamente.'],
         },
         questions: (topic.questions || []).slice(0, 5).map((q: any, qIdx: number) => ({
           id: q.id || `q-${sIdx + 1}-${tIdx + 1}-${qIdx + 1}`,
@@ -288,8 +328,8 @@ Estruture em JSON com a chave "stages": Array<{
   } catch (err) {
     console.error('Failed to parse Gemini roadmap JSON:', err, cleanJson);
     if (settings.useMockFallback) {
-      console.warn('Falling back to local template due to JSON parse error.');
-      return generateMockRoadmap(params);
+      console.warn('Falling back to domain template due to JSON parse error.');
+      return generateDomainRoadmap(params);
     }
     throw new Error('A IA não retornou um formato JSON válido. Tente novamente ou verifique as instruções.');
   }
@@ -316,7 +356,7 @@ export async function evaluateTaskAnswers(
     throw new Error('Chave de API do Gemini ausente. Configure-a para habilitar a correção inteligente.');
   }
 
-  const systemInstruction = `Você é um Avaliador Pedagógico Rigoroso e Mentor Técnico Sênior.
+  const systemInstruction = `Você é um Avaliador Pedagógico Rigoroso e Mentor Especialista no Domínio.
 Critério Crítico: O percentual de aprovação é de no mínimo 90% (score >= 90).
 Sua missão:
 1. Avaliar com precisão cirúrgica as respostas fornecidas pelo estudante para as 5 questões da tarefa.
@@ -397,167 +437,231 @@ Gere a resposta JSON com o seguinte schema:
 }
 
 /**
- * Built-in High-Fidelity Pedagogical Mock Generator
+ * Domain-Aware Dynamic Roadmap Generator (Used when offline or in demo mode)
+ * Produces topic titles specifically tailored to the subject and area
  */
-function generateMockRoadmap(params: GenerateRoadmapParams): Stage[] {
-  const isBeginner = params.knowledgeLevel <= 1;
-  const isAdvanced = params.knowledgeLevel >= 4;
+function generateDomainRoadmap(params: GenerateRoadmapParams): Stage[] {
+  const isLanguage = params.knowledgeArea.includes('Idioma');
+  const isBusiness = params.knowledgeArea.includes('Negócio');
+  const subject = params.name.trim();
 
-  const stageTemplates = [
-    {
-      title: isBeginner 
-        ? 'Fundamentos Primitivos e Analogias de Entrada' 
-        : isAdvanced 
-        ? 'Arquitetura Interna e Invariantes Críticos' 
-        : 'Fundamentos Arquiteturais e Mentalidade',
-      desc: isBeginner
-        ? 'Desconstrução inicial, modelos visuais e entendimento de baixo nível sem suposições prévias.'
-        : isAdvanced
-        ? 'Análise de primeiro princípios em sistemas de alta frequência e restrições de máquina.'
-        : 'Compreensão de baixo nível, conceitos primitivos e modelagem de pensamento.',
-      topicPrefixes: [
-        'Análise de Primeiros Princípios e Primitivas',
-        'Taxonomia e Modelagem de Domínio',
-        'Padrões Estruturais e Fluxos de Dados',
-        'Configuração de Ambiente e Ferramental de Alta Frequência',
-        'Anti-patterns Comuns e Heurísticas de Falha'
-      ]
-    },
-    {
-      title: 'Execução Prática e Construção Modular',
-      desc: 'Implementação guiada, criação de provas de conceito e composição de sistemas.',
-      topicPrefixes: [
-        'Prototipagem Rápida e Validação de Hipóteses',
-        'Isolamento de Componentes e Acoplamento Mínimo',
-        'Estratégias de Tratamento de Erros e Resiliência',
-        'Instrumentação, Logs e Métricas de Execução',
-        'Refatoração Cirúrgica e Otimização Inicial'
-      ]
-    },
-    {
-      title: isAdvanced
-        ? 'Alta Escala, Benchmarks e Casos Limítrofes'
-        : 'Aprofundamento, Resolução de Gargalos e Maestria',
-      desc: 'Casos extremos, performance de ponta e consolidação orgânica do conhecimento.',
-      topicPrefixes: [
-        'Profilagem de Desempenho e Diagnóstico de Fricção',
-        'Segurança em Profundidade e Validações de Borda',
-        'Automação de Pipelines e Ciclos de Feedback Rápido',
-        'Resolução de Problemas Críticos em Cenários Complexos',
-        'Síntese Integrativa e Construção do Projeto Final'
-      ]
-    }
-  ];
+  let stagesMeta: Array<{ title: string; desc: string; topics: string[] }> = [];
 
-  return stageTemplates.map((sTemplate, sIdx) => ({
+  if (isLanguage) {
+    stagesMeta = [
+      {
+        title: `Fase 1: Fonética, Estrutura e Vocabulário Inicial de ${subject}`,
+        desc: `Construção da base de escuta, pronúncia correta e frases básicas essenciais.`,
+        topics: [
+          `Alfabeto, Fonemas e Sons Específicos em ${subject}`,
+          `Artigos, Pronomes e Construção de Frases Simples`,
+          `Vocabulário de Sobrevivência e Expressões Cotidianas`,
+          `Conjugação no Tempo Presente e Verbos Fundamentais`,
+          `Prática de Compreensão Auditiva e Diálogos Iniciais`
+        ]
+      },
+      {
+        title: `Fase 2: Expansão Gramatical, Tempos Passados e Diálogos em ${subject}`,
+        desc: `Estruturação de narrativas, conexões frasais e consolidação de conversação.`,
+        topics: [
+          `Tempos Verbais do Passado e Marcadores Temporais`,
+          `Preposições, Conectivos e Fluidez de Pensamento`,
+          `Vocabulário Situacional (Trabalho, Viagem e Ambientes)`,
+          `Perguntas, Negações e Estruturas Argumentativas`,
+          `Simulação de Conversação e Produção Textual Guiada`
+        ]
+      },
+      {
+        title: `Fase 3: Fluência Situacional, Futuro e Imersão em ${subject}`,
+        desc: `Autonomia de fala, compreensão de materiais nativos e expressão de ideias complexas.`,
+        topics: [
+          `Futuro, Condicional e Expressão de Hipóteses`,
+          `Expressões Idiomáticas e Gírias Naturais em ${subject}`,
+          `Consumo de Notícias, Podcasts e Conteúdo Nativo`,
+          `Debate Crítico e Redação de Textos Argumentativos`,
+          `Síntese de Fluência e Apresentação Oral Completa`
+        ]
+      }
+    ];
+  } else if (isBusiness) {
+    stagesMeta = [
+      {
+        title: `Fase 1: Diagnóstico de Mercado e Modelagem em ${subject}`,
+        desc: `Compreensão do ecossistema, segmentação de clientes e proposta de valor.`,
+        topics: [
+          `Mapeamento de Dores e Validação de Proposta de Valor`,
+          `Análise Competitiva e Posicionamento Estratégico`,
+          `Modelos de Receita, Precificação e Unit Economics`,
+          `Canais de Aquisição e Estrutura de Go-To-Market`,
+          `Construção do Business Model Canvas e Hipóteses Críticas`
+        ]
+      },
+      {
+        title: `Fase 2: Viabilidade Financeira e Operações em ${subject}`,
+        desc: `Demonstrativos financeiros, fluxo de caixa e estruturação de processos.`,
+        topics: [
+          `Estruturação de DRE e Projeções Financeiras`,
+          `Cálculo de CAC, LTV e Ponto de Equilíbrio (Break-even)`,
+          `Mapeamento de Processos Operacionais e Ferramental`,
+          `Gestão de Riscos, Compliance e Aspectos Regulatórios`,
+          `Métricas de Desempenho e Definição de OKRs`
+        ]
+      },
+      {
+        title: `Fase 3: Escala, Governança e Tomada de Decisão em ${subject}`,
+        desc: `Alavancas de crescimento, captação e sustentabilidade de longo prazo.`,
+        topics: [
+          `Estratégias de Retenção e Expansão de Clientes`,
+          `Financiamento, Captação e Relação com Investidores`,
+          `Governança Corporativa e Gestão de Pessoas`,
+          `Otimização de Gargalos e Automação de Processos`,
+          `Pitch Executivo e Plano Estratégico Consolidado`
+        ]
+      }
+    ];
+  } else {
+    // Default / Tech / Sciences
+    stagesMeta = [
+      {
+        title: `Fase 1: Fundamentos Nucleares e Arquitetura de ${subject}`,
+        desc: `Compreensão de baixo nível, fluxo de dados e conceitos primitivos de ${params.scope.slice(0, 40)}.`,
+        topics: [
+          `Fundamentos de Arquitetura e Primitivas em ${subject}`,
+          `Configuração de Ambiente e Ferramental Essencial`,
+          `Modelagem de Dados e Fluxo de Execução`,
+          `Padrões de Projeto e Contratos de Interface em ${subject}`,
+          `Primeira Implementação Prática e Validação Mínima`
+        ]
+      },
+      {
+        title: `Fase 2: Construção Modular, Tratamento de Falhas e Resiliência em ${subject}`,
+        desc: `Implementação robusta, isolamento de componentes e mitigação de erros.`,
+        topics: [
+          `Isolamento de Componentes e Baixo Acoplamento`,
+          `Tratamento de Erros, Exceções e Resiliência`,
+          `Testes Automatizados e Validação de Invariantes em ${subject}`,
+          `Instrumentação, Métricas e Diagnóstico de Execução`,
+          `Refatoração e Boas Práticas Canônicas da Indústria`
+        ]
+      },
+      {
+        title: `Fase 3: Otimização de Performance, Casos de Borda e Maestria em ${subject}`,
+        desc: `Diagnóstico de gargalos, segurança e consolidação em escala real.`,
+        topics: [
+          `Profilagem de Desempenho e Eliminação de Gargalos`,
+          `Segurança em Profundidade e Validações de Borda`,
+          `Automação de Pipelines e Ciclos de Feedback em ${subject}`,
+          `Resolução de Problemas Complexos em Produção`,
+          `Síntese Integrativa e Construção do Projeto Final`
+        ]
+      }
+    ];
+  }
+
+  return stagesMeta.map((sMeta, sIdx) => ({
     id: `stage-${sIdx + 1}`,
     order: sIdx + 1,
-    title: sTemplate.title,
-    description: sTemplate.desc,
+    title: sMeta.title,
+    description: sMeta.desc,
     completed: false,
-    topics: sTemplate.topicPrefixes.map((topicTitle, tIdx) => ({
+    topics: sMeta.topics.map((tTitle, tIdx) => ({
       id: `topic-${sIdx + 1}-${tIdx + 1}`,
-      title: `${topicTitle}: ${params.name}`,
-      description: `Estudo focado e prático sobre ${topicTitle.toLowerCase()} aplicado a ${params.scope}.`,
+      title: tTitle,
+      description: `Estudo focado sobre "${tTitle}" aplicado ao escopo do projeto.`,
       completed: false,
       focusTimeSeconds: 0,
       subtopics: [
         {
           id: `sub-${sIdx + 1}-${tIdx + 1}-1`,
-          title: `Desconstrução de Termos Fundamentais`,
-          description: `Identificar as 3 principais terminologias e diagramar o fluxo mental.`,
+          title: `Desconstrução Conceitual de ${tTitle}`,
+          description: `Identificar os termos fundamentais e criar um mapa mental de funcionamento.`,
           completed: false,
         },
         {
           id: `sub-${sIdx + 1}-${tIdx + 1}-2`,
-          title: `Prática Deliberada em Código/Documentação`,
-          description: `Escrever um exemplo prático demonstrando o funcionamento mínimo.`,
+          title: `Aplicação Prática e Exercício Guiado`,
+          description: `Executar um teste prático autônomo validando o conceito.`,
           completed: false,
         },
         {
           id: `sub-${sIdx + 1}-${tIdx + 1}-3`,
-          title: `Teste de Casos de Borda e Falhas Controladas`,
-          description: `Induzir deliberadamente uma quebra para entender as mensagens de erro e causas-raiz.`,
+          title: `Diagnóstico de Erros Comuns e Casos de Borda`,
+          description: `Entender onde iniciantes costumam errar e como prevenir falhas silenciosas.`,
           completed: false,
         },
         {
           id: `sub-${sIdx + 1}-${tIdx + 1}-4`,
-          title: `Documentação Pessoal e Resumo em 3 Linhas`,
-          description: `Sintetizar o aprendizado em notas sucintas para revisão futura.`,
+          title: `Síntese e Documentação em Notas Pessoais`,
+          description: `Redigir notas concisas para fixação de longo prazo.`,
           completed: false,
         }
       ],
       researchGuide: {
-        overview: `Nesta tarefa, seu objetivo autônomo é dominar os princípios de "${topicTitle}" calibrado para seu nível de conhecimento prévio (${params.knowledgeLevel}/5). Pesquise a documentação canônica, explore especificações técnicas e crie analogias mentais sólidas.`,
-        keyConcepts: [
-          'Invariantes de Sistema',
-          'Alocação e Custo Cognitivo',
-          'Trade-offs de Arquitetura',
-          'Isolamento e Modulação'
-        ],
+        overview: `Nesta tarefa de "${tTitle}", pesquise a documentação canônica e referências autênticas sobre ${params.scope}. Evite atalhos superficiais e busque entender o porquê de cada regra.`,
+        keyConcepts: [tTitle, 'Fundamentos', 'Aplicações Reais', 'Prevenção de Falhas'],
         searchQueries: [
-          `"${topicTitle}" in depth explanation`,
-          `${params.name} ${topicTitle} best practices github`,
-          `how to design ${topicTitle} architecture`
+          `"${tTitle}" guia oficial`,
+          `${tTitle} melhores práticas`,
+          `como dominar ${tTitle}`
         ],
         reflectionQuestions: [
-          'Qual é o trade-off principal desta abordagem em relação a soluções mais ingênuas?',
-          'Se esse componente falhar em produção, qual é o impacto cascata?',
-          'Como você explicaria esse conceito para um colega sem usar jargões técnicos?'
+          'Qual é a consequência prática de negligenciar este conceito?',
+          'Como este tópico se integra às metas quantitativas e qualitativas definidas?',
+          'Se você tivesse que ensinar isso para outra pessoa em 2 minutos, o que destacaria?'
         ],
         recommendedApproaches: [
-          'Abra um arquivo em branco e escreva a implementação do zero antes de usar bibliotecas.',
-          'Consulte a especificação técnica oficial antes de fóruns informais.'
+          'Pratique em sessões de foco ininterrupto usando o cronômetro.',
+          'Consulte materiais de referência antes de fóruns informais.'
         ]
       },
       questions: [
         {
           id: `q-${sIdx + 1}-${tIdx + 1}-1`,
           type: 'objective',
-          question: `Qual é a premissa central para garantir robustez ao trabalhar com ${topicTitle.toLowerCase()}?`,
+          question: `Qual é o princípio fundamental a ser observado ao estudar ${tTitle}?`,
           options: [
-            'Minimizar estados mutáveis e manter dependências explícitas e isoladas.',
-            'Centralizar todas as variáveis globais para facilitar o acesso indiscriminado.',
-            'Ignorar validações de entrada para priorizar apenas a velocidade de compilação.',
-            'Acoplar a lógica de negócio diretamente à camada de apresentação sem abstração.'
+            'Compreender as relações de causa e efeito subjacentes antes de memorizar superficialmente.',
+            'Decorar respostas aleatórias sem testar a aplicação no mundo real.',
+            'Ignorar os conceitos fundamentais para focar apenas em atalhos rápidos.',
+            'Estudar sem pausas e sem reflexão crítica sobre o que foi lido.'
           ],
-          feedback: 'A opção correta prioriza imutabilidade, contratos explícitos e baixo acoplamento.'
+          feedback: 'A compreensão causal e a prática deliberada são o padrão ouro de aprendizado.'
         },
         {
           id: `q-${sIdx + 1}-${tIdx + 1}-2`,
           type: 'objective',
-          question: `Em caso de degradação de performance ou sobrecarga neste tópico, qual heurística deve ser aplicada primeiro?`,
+          question: `Como validar que você realmente dominou o tópico "${tTitle}"?`,
           options: [
-            'Medir com ferramentas de profiling para identificar o gargalo real antes de qualquer suposição.',
-            'Reescrever o código inteiro sem instrumentação prévia.',
-            'Aumentar aleatoriamente o tempo limite de espera (timeouts).',
-            'Desabilitar os testes automatizados para liberar memória.'
+            'Ser capaz de explicar o conceito do zero e aplicá-lo em um problema sem consultar gabarito.',
+            'Apenas ler o texto uma vez sem testar na prática.',
+            'Marcar o tópico como concluído sem fazer os exercícios.',
+            'Copiar e colar notas de terceiros.'
           ],
-          feedback: 'Diagnóstico orientado a métricas (profiling) é o padrão ouro de engenharia.'
+          feedback: 'A capacidade de evocação ativa e aplicação prática comprova domínio real.'
         },
         {
           id: `q-${sIdx + 1}-${tIdx + 1}-3`,
           type: 'objective',
-          question: `Como a metodologia de "Deep Work" (Trabalho Profundo) se integra a esta etapa de aprendizado?`,
+          question: `Em caso de dúvida ou erro durante este estudo, qual a melhor estratégia?`,
           options: [
-            'Sessões focadas sem distrações intercaladas com reflexão ativa produzem retenção neural de longo prazo.',
-            'Multitarefa agressiva com notificações ligadas aumenta a velocidade de leitura.',
-            'Copiar e colar soluções sem ler gera aprendizado orgânico.',
-            'Estudar sem pausas por 12 horas consecutivas sem testar na prática.'
+            'Consultar a documentação canônica, isolar o ponto de dúvida e testar uma hipótese.',
+            'Desistir imediatamente do projeto de aprendizado.',
+            'Pular para a próxima etapa sem entender a causa-raiz.',
+            'Culpar o cronômetro de foco.'
           ],
-          feedback: 'O foco deliberado e a prática espaçada sustentam o aprendizado orgânico.'
+          feedback: 'Diagnóstico metódico e isolamento da causa-raiz garantem retenção profunda.'
         },
         {
           id: `q-${sIdx + 1}-${tIdx + 1}-4`,
           type: 'argumentative',
-          question: `Explique sucintamente como você aplicou os conceitos de ${topicTitle} na prática e quais foram os principais desafios técnicos encontrados.`,
-          feedback: 'A resposta deve articular o processo de investigação, a prova de conceito realizada e as decisões tomadas.'
+          question: `Explique sucintamente o que você entendeu sobre "${tTitle}" e dê um exemplo prático de aplicação no contexto do seu projeto.`,
+          feedback: 'Avalia a capacidade de abstração, síntese e aplicação contextualizada.'
         },
         {
           id: `q-${sIdx + 1}-${tIdx + 1}-5`,
           type: 'argumentative',
-          question: `Quais foram as 2 principais fontes consultadas durante seu estudo e qual insight foi mais transformador para sua compreensão?`,
-          feedback: 'Demonstra rigor na escolha das fontes e capacidade de abstração do insight principal.'
+          question: `Quais foram as principais dificuldades conceituais que você superou ao estudar este tópico de forma autônoma?`,
+          feedback: 'Demonstra pensamento crítico e autoavaliação metacognitiva.'
         }
       ],
       evaluationHistory: [],
@@ -594,8 +698,8 @@ function generateMockEvaluation(task: TopicTask, answers: Record<string, string>
       evaluatedAt: new Date().toISOString(),
       correctiveReport: `Excelente desempenho (${score}% de aproveitamento). Suas respostas demonstraram profunda absorção conceitual e capacidade analítica em "${task.title}". As questões conceituais foram respondidas com rigor, e a argumentação prática evidenciou execução deliberada. Um pequeno ponto de refinamento: certifique-se de sempre formalizar os invariantes de borda em diagramas.`,
       reinforcementMaterial: `Material de Reforço Recomendado:
-- Artigo Técnico: "Designing Resilient Interfaces and Low-Coupling Systems"
-- Desafio de Maestria: Experimente estressar essa implementação simulando latência e perda de pacotes para validar seu modelo mental.`
+- Estudo Complementar: Casos avançados de aplicação em produção e resolução de ambiguidades.
+- Desafio de Maestria: Teste seus conhecimentos explicando esse mesmo conceito para alguém em nível inferior.`
     };
   } else {
     return {
@@ -606,7 +710,7 @@ function generateMockEvaluation(task: TopicTask, answers: Record<string, string>
       pedagogicalPerspective: `Nova Perspectiva Pedagógica:
 Identificamos que sua resposta tratou "${task.title}" principalmente como uma sequência mecânica de passos, sem internalizar o modelo mental subjacente.
 Pense neste conceito não como uma regra a ser memorizada, mas como um "contrato de comunicação":
-1. Antes de executar qualquer ação, defina claramente quais premissas NUNCA podem ser violadas (invariantes).
+1. Antes de executar qualquer ação, defina claramente quais premissas NUNCA podem ser violadas.
 2. Isole as variáveis externas para que seu foco se mantenha estritamente no núcleo do problema.
 3. Revise o Guia de Pesquisa e observe as perguntas de reflexão antes de tentar novamente.`,
       newQuestions: [
@@ -615,34 +719,34 @@ Pense neste conceito não como uma regra a ser memorizada, mas como um "contrato
           type: 'objective',
           question: `[Reforço Adaptativo] Ao reconsiderar ${task.title}, qual é o erro mais perigoso ao assumir premissas sem validação?`,
           options: [
-            'Propagação silenciosa de estado corrompido que só explode em fases posteriores.',
-            'O editor de código exibir um aviso de indentação estética.',
-            'O tempo de compilação diminuir temporariamente.',
-            'O consumo de café do desenvolvedor aumentar.'
+            'Propagação silenciosa de falhas conceituais que inviabilizam etapas posteriores.',
+            'O tempo de leitura diminuir.',
+            'O editor exibir uma mensagem de sugestão estética.',
+            'O ambiente rodar perfeitamente sem problemas.'
           ],
-          feedback: 'Erros silenciosos e acúmulo de débito conceitual são a causa-raiz de falhas em cascata.'
+          feedback: 'Erros conceituais silenciosos são a causa-raiz de bloqueios futuros.'
         },
         {
           id: `nq-${Date.now()}-2`,
           type: 'objective',
-          question: `[Reforço Adaptativo] Qual é a diferença fundamental entre memorizar sintaxe e internalizar o modelo mental deste tópico?`,
+          question: `[Reforço Adaptativo] Qual é a diferença fundamental entre memorizar termos e internalizar o modelo mental deste tópico?`,
           options: [
             'O modelo mental permite resolver problemas inéditos deduzindo a solução a partir de primeiros princípios.',
-            'Memorizar sintaxe é superior porque elimina a necessidade de pensar criticamente.',
-            'Não há diferença real, ambos dependem de repetição mecânica sem reflexão.',
-            'Modelos mentais só são úteis para teorias puras sem aplicação prática.'
+            'Memorizar termos é superior porque elimina a necessidade de pensar criticamente.',
+            'Não há diferença real entre memorização e entendimento profundo.',
+            'Modelos mentais não têm utilidade prática.'
           ],
-          feedback: 'Primeiros princípios conferem autonomia cognitiva.'
+          feedback: 'Primeiros princípios conferem autonomia cognitiva real.'
         },
         {
           id: `nq-${Date.now()}-3`,
           type: 'objective',
-          question: `[Reforço Adaptativo] Para atingir o critério de 90% nesta etapa, qual atitude técnica deve ser adotada?`,
+          question: `[Reforço Adaptativo] Para atingir o critério de 90% nesta etapa, qual atitude deve ser adotada?`,
           options: [
-            'Explicar com clareza a relação de causa e efeito entre os conceitos estudados e a implementação.',
-            'Escrever respostas monossilábicas para economizar tempo.',
-            'Ignorar os conceitos-chave descritos no Guia de Pesquisa.',
-            'Desistir ao primeiro sinal de dúvida.'
+            'Explicar com clareza a relação de causa e efeito entre os conceitos estudados e a aplicação real.',
+            'Escrever respostas vagas para economizar tempo.',
+            'Ignorar os conceitos-chave do Guia de Pesquisa.',
+            'Desistir ao primeiro obstáculo.'
           ],
           feedback: 'Articulação de causa e efeito comprova domínio real.'
         },
@@ -655,7 +759,7 @@ Pense neste conceito não como uma regra a ser memorizada, mas como um "contrato
         {
           id: `nq-${Date.now()}-5`,
           type: 'argumentative',
-          question: `[Reforço Adaptativo] Dê um exemplo concreto de uma falha que aconteceria se você implementasse esse conceito de forma incorreta.`,
+          question: `[Reforço Adaptativo] Dê um exemplo concreto de uma falha ou mal-entendido que aconteceria se você aplicasse esse conceito de forma incorreta.`,
           feedback: 'A capacidade de prever falhas demonstra compreensão profunda do domínio.'
         }
       ]
